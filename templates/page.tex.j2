@@ -1,0 +1,64 @@
+{# Here is some layout logic. #}
+{# Because it is only about layout it is inside the template. #}
+{% set player_count = player_data_list | length %}
+{% set page_height = 20 %}
+{% set column_distance = page_height / player_count %}
+{% set header_size = "\footnotesize" %}
+
+\documentclass[12pt,a4paper,ngerman]{article}
+
+\renewcommand*\ttdefault{cmvtt}
+% \usepackage{courier}
+\renewcommand{\familydefault}{\ttdefault}
+
+\usepackage[OT2,T1]{fontenc}
+\usepackage{tabularx}
+
+\renewcommand\labelitemi{---}
+
+
+\usepackage{graphicx}
+\usepackage[
+    a4paper,
+    bindingoffset=0cm,
+    left=-0.3cm,
+    right=0.3cm,
+    top=0.1cm,
+    bottom=0.5cm,
+    footskip=.25in
+]{geometry}
+
+\frenchspacing              % Better looking spacings after periods
+\pagestyle{empty}           % No pagenumbers/headers/footers
+
+
+\begin{document}
+
+{{ page_number }}
+
+\vspace{1.5cm}
+
+\hspace{4.8cm} \begin{minipage}[b]{.95\textwidth}
+
+    \begin{tabularx}{0.6\textwidth}{l l X} 
+
+        {% for player_data in player_data_list %}
+
+            {% set header = player_data[0] %}
+            {% set content = player_data[1] %}
+
+            {# HEADER #}
+
+            {{- header_size -}} ({{- header[0] -}} & {{- header_size -}} {{- header[1] -}} & {{- header_size -}} {{- header[2] -}}) \\ [0.4cm] 
+
+            {# CONTENT #}
+
+            \romannumeral {{- content[0] -}} & {{- content[1] -}} & {{- content[2] -}}\\ [{{- column_distance -}}cm]
+
+        {% endfor %}
+
+    \end{tabularx}
+
+\end{minipage}
+
+\end{document}
