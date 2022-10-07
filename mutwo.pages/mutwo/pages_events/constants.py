@@ -1,0 +1,3 @@
+TEMPLATES_DIRECTORY = "./templates"
+
+PAGE_TEMPLATE_PATH = ""
