@@ -1,0 +1,16 @@
+#! /usr/bin/env nix-shell
+#! nix-shell -i python3 --pure ../shell.nix
+
+from mutwo import pages_converters
+
+
+PAGE_COUNT = 10
+# VOICE_COUNT_LIST = [3, 4, 5]
+VOICE_COUNT_LIST = [3]
+
+
+for voice_count in VOICE_COUNT_LIST:
+    page_sequential_event = pages_converters.XToPageSequentialEvent().convert(
+        page_count=10, voice_count=voice_count
+    )
+    pages_converters.PageSequentialEventToPDF().convert(page_sequential_event)

@@ -3,7 +3,7 @@
 {% set player_count = player_data_list | length %}
 {% set page_height = 20 %}
 {% set column_distance = page_height / player_count %}
-{% set header_size = "\footnotesize" %}
+{% set header_size = "\\footnotesize" %}
 
 \documentclass[12pt,a4paper,ngerman]{article}
 
@@ -49,11 +49,11 @@
 
             {# HEADER #}
 
-            {{- header_size -}} ({{- header[0] -}} & {{- header_size -}} {{- header[1] -}} & {{- header_size -}} {{- header[2] -}}) \\ [0.4cm] 
+            {{ header_size }} ({{ header[0] }} & {{ header_size }} {{ header[1] }} & {{ header_size }} {{ header[2] }}) \\ [0.4cm] 
 
             {# CONTENT #}
 
-            \romannumeral {{- content[0] -}} & {{- content[1] -}} & {{- content[2] -}}\\ [{{- column_distance -}}cm]
+            \romannumeral {{ content[0] }} & {{ content[1] }} & {{ content[2] }}\\ [{{- column_distance -}}cm]
 
         {% endfor %}
 

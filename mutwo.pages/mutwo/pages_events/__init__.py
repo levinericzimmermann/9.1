@@ -1,5 +1,9 @@
+import abc
 import dataclasses
-import jinja2
+
+import ranges
+
+from mutwo import core_events
 
 
 class Column(tuple[str, str, str]):
@@ -7,28 +11,58 @@ class Column(tuple[str, str, str]):
 
 
 class Header(Column):
-    def __init__(self, content_name0: str, content_name1: str):
-        super().__init__(("player", content_name0, content_name1))
+    def __new__(self, content_name0: str, content_name1: str):
+        return super().__new__(tuple, ("player", content_name0, content_name1))
 
 
 class Content(Column):
-    def __init__(self, player_index: int, content0: str, content1: str):
-        super().__init__((str(player_index), content0, content1))
+    def __new__(self, player_index: int, content0: str, content1: str):
+        return super().__new__(tuple, (str(player_index + 1), content0, content1))
 
 
-@dataclasses.dataclass
-class PlayerEntry(object):
-    header: Header
-    content: Content
+class PlayerEvent(core_events.SimpleEvent):
+    @property
+    @abc.abstractmethod
+    def header(self) -> Header:
+        ...
+
+    @property
+    @abc.abstractmethod
+    def content(self) -> Content:
+        ...
 
 
-@dataclasses.dataclass
-class Page(object):
-    page_number: int
-    player_entry_tuple: tuple[PlayerEntry, ...]
+class EventSequence(PlayerEvent):
+    def __init__(
+        self,
+        *args,
+        player_index: int,
+        event_count: int,
+        event_duration_range: ranges.Range,
+        **kwargs
+    ):
+        self.player_index = player_index
+        self.event_count = event_count
+        self.event_duration_range = event_duration_range
+        super().__init__(*args, duration=event_duration_range.end, **kwargs)
 
-    environment = jinja2.Environment(loader=jinja2.FileSystemLoader("./"))
+    @property
+    def header(self) -> Header:
+        return Header("number of events", "event sequence duration range")
 
-    def export(self):
-        template = environment.get_template(jinja2_file_path)
-        toml_str = template.render()
+    @property
+    def content(self) -> Content:
+        return Content(
+            self.player_index,
+            str(self.event_count),
+            f"{self.event_duration_range.start}s -- {self.event_duration_range.end}s",
+        )
+
+
+class Page(
+    core_events.SimultaneousEvent[PlayerEvent],
+    class_specific_side_attribute_tuple=("page_number",),
+):
+    def __init__(self, *args, page_number: int, **kwargs):
+        self.page_number = page_number
+        super().__init__(*args, **kwargs)

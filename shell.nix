@@ -26,8 +26,12 @@ in
 
   pkgs.mkShell {
     buildInputs = with pkgs; [
-      texlive.combined.scheme-full
+      # version control
       git
+      # computing pages
       python91
+      # For generating scores
+      texlive.combined.scheme-full
+      pdftk
     ];
   }
