@@ -1,0 +1,3 @@
+#! /usr/bin/env bash
+./scripts/build-score
+./scripts/build-pages
