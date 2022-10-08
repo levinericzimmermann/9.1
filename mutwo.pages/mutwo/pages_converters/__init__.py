@@ -1,4 +1,5 @@
 import abc
+import dataclasses
 import os
 import subprocess
 import typing
@@ -9,6 +10,7 @@ import ranges
 
 from mutwo import core_converters
 from mutwo import core_events
+from mutwo import core_utilities
 from mutwo import pages_constants
 from mutwo import pages_events
 from mutwo import pages_generators
@@ -192,6 +194,43 @@ class XToPageSequentialEvent(core_converters.abc.Converter):
 
 
 class XToScore(Jinja2Converter):
+    @dataclasses.dataclass
+    class GroupDivision(object):
+        group_size: int
+
+        @property
+        def division(self) -> str:
+            division_latex_list = []
+            for division in core_utilities.find_numbers_which_sums_up_to(
+                self.group_size, constants.PARTY_COUNT_TUPLE
+            ):
+                if len(division) == 1:
+                    division_latex = str(division[0])
+                else:
+                    division_latex = "${}$".format("+".join(tuple(map(str, division))))
+                division_latex_list.append(division_latex)
+            return " or ".join(division_latex_list)
+
+    def _get_group_division_table(
+        self, minima_group_size: int = 3, maxima_group_size: int = 17
+    ) -> tuple[tuple[str, str, str, str], ...]:
+        group_division_list = [
+            self.GroupDivision(group_size)
+            for group_size in range(minima_group_size, maxima_group_size)
+        ]
+        group_division_count = len(group_division_list)
+        assert group_division_count % 2 == 0
+        group_division_table = []
+        for group_division_pair in zip(
+            group_division_list, group_division_list[int(group_division_count / 2) :]
+        ):
+            group_division_table_entry = []
+            for group_division in group_division_pair:
+                group_division_table_entry.append(str(group_division.group_size))
+                group_division_table_entry.append(group_division.division)
+            group_division_table.append(tuple(group_division_table_entry))
+        return tuple(group_division_table)
+
     def __init__(self):
         super().__init__(constants.SCORE_TEMPLATE_PATH)
 
@@ -199,4 +238,6 @@ class XToScore(Jinja2Converter):
         return f"{constants.BUILD_PATH}/score"
 
     def _get_tex_file_content(self, *args, **kwargs) -> str:
-        return self.template.render(title=pages_constants.TITLE)
+        return self.template.render(
+            title=pages_constants.TITLE, division_table=self._get_group_division_table()
+        )
