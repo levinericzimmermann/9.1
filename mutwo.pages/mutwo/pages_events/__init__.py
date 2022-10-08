@@ -39,7 +39,7 @@ class EventSequence(PlayerEvent):
         player_index: int,
         event_count: int,
         event_duration_range: ranges.Range,
-        **kwargs
+        **kwargs,
     ):
         self.player_index = player_index
         self.event_count = event_count

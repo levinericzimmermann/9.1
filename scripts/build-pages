@@ -2,15 +2,34 @@
 #! nix-shell -i python3 --pure ../shell.nix
 
 from mutwo import pages_converters
+from mutwo import pages_generators
 
 
 PAGE_COUNT = 10
 # VOICE_COUNT_LIST = [3, 4, 5]
 VOICE_COUNT_LIST = [3]
+# RANDOM_SEED_LIST = [100, 300, 500]
+RANDOM_SEED_LIST = [100]
+
+assert len(RANDOM_SEED_LIST) == len(VOICE_COUNT_LIST)
 
 
-for voice_count in VOICE_COUNT_LIST:
-    page_sequential_event = pages_converters.XToPageSequentialEvent().convert(
-        page_count=10, voice_count=voice_count
+for voice_count, random_seed in zip(VOICE_COUNT_LIST, RANDOM_SEED_LIST):
+    minima_duration_generator_seed = random_seed * 2
+    maxima_duration_generator_seed = random_seed * 10
+
+    minima_duration_generator = pages_generators.EnvelopeDistributionRandom(
+        pages_converters.constants.MINIMA_DURATION_GENERATOR_OFFSET,
+        pages_converters.constants.MINIMA_DURATION_GENERATOR_ENVELOPE,
+        random_seed=minima_duration_generator_seed,
     )
+    maxima_duration_generator = pages_generators.EnvelopeDistributionRandom(
+        pages_converters.constants.MAXIMA_DURATION_GENERATOR_OFFSET,
+        pages_converters.constants.MAXIMA_DURATION_GENERATOR_ENVELOPE,
+        random_seed=maxima_duration_generator_seed,
+    )
+
+    page_sequential_event = pages_converters.XToPageSequentialEvent(
+        minima_duration_generator, maxima_duration_generator, random_seed=random_seed
+    ).convert(page_count=10, voice_count=voice_count)
     pages_converters.PageSequentialEventToPDF().convert(page_sequential_event)
