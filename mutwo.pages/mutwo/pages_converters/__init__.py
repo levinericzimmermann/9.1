@@ -1,3 +1,4 @@
+import abc
 import os
 import subprocess
 import typing
@@ -8,6 +9,7 @@ import ranges
 
 from mutwo import core_converters
 from mutwo import core_events
+from mutwo import pages_constants
 from mutwo import pages_events
 from mutwo import pages_generators
 
@@ -27,28 +29,28 @@ class PageToPlayerDataList(core_converters.abc.Converter):
         return player_data_list
 
 
-class PageToPDF(core_converters.abc.Converter):
-    def __init__(self):
+class Jinja2Converter(core_converters.abc.Converter):
+    def __init__(self, template_path: str):
         environment = jinja2.Environment(loader=jinja2.FileSystemLoader("./"))
-        self.template = environment.get_template(constants.PAGE_TEMPLATE_PATH)
-        self.page_to_player_data_list = PageToPlayerDataList()
+        self.template = environment.get_template(template_path)
+
+    @abc.abstractmethod
+    def _get_default_path(self, *args, **kwargs) -> str:
+        ...
+
+    @abc.abstractmethod
+    def _get_tex_file_content(self, *args, **kwargs) -> str:
+        ...
 
     def convert(
-        self,
-        page_to_convert: pages_events.Page,
-        path: typing.Optional[str] = None,
-        cleanup: bool = True,
+        self, *args, path: typing.Optional[str] = None, cleanup: bool = True, **kwargs
     ) -> str:
-        voice_count = len(page_to_convert)
         if path is None:
-            path = f"{constants.BUILD_PATH}/{voice_count}_{page_to_convert.page_number}"
+            path = self._get_default_path(*args, **kwargs)
         tex_path = f"{path}.tex"
         aux_path = f"{path}.aux"
         log_path = f"{path}.log"
-        player_data_list = self.page_to_player_data_list.convert(page_to_convert)
-        tex_file_content = self.template.render(
-            player_data_list=player_data_list, page_number=page_to_convert.page_number
-        )
+        tex_file_content = self._get_tex_file_content(*args, **kwargs)
         with open(tex_path, "w") as tex_file:
             tex_file.write(tex_file_content)
         subprocess.call(
@@ -59,6 +61,25 @@ class PageToPDF(core_converters.abc.Converter):
             os.remove(aux_path)
             os.remove(log_path)
         return f"{path}.pdf"
+
+
+class PageToPDF(Jinja2Converter):
+    def __init__(self):
+        super().__init__(constants.PAGE_TEMPLATE_PATH)
+        self.page_to_player_data_list = PageToPlayerDataList()
+
+    def _get_default_path(self, page_to_convert: pages_events.Page, **kwargs) -> str:
+        voice_count = len(page_to_convert)
+        return f"{constants.BUILD_PATH}/{voice_count}_{page_to_convert.page_number}"
+
+    def _get_tex_file_content(
+        self, page_to_convert: pages_events.Page, **kwargs
+    ) -> str:
+        player_data_list = self.page_to_player_data_list.convert(page_to_convert)
+        tex_file_content = self.template.render(
+            player_data_list=player_data_list, page_number=page_to_convert.page_number
+        )
+        return tex_file_content
 
 
 class PageSequentialEventToPDF(core_converters.abc.Converter):
@@ -168,3 +189,14 @@ class XToPageSequentialEvent(core_converters.abc.Converter):
                 page.append(event_sequence)
             page_sequential_event.append(page)
         return page_sequential_event
+
+
+class XToScore(Jinja2Converter):
+    def __init__(self):
+        super().__init__(constants.SCORE_TEMPLATE_PATH)
+
+    def _get_default_path(self, *args, **kwargs) -> str:
+        return f"{constants.BUILD_PATH}/score"
+
+    def _get_tex_file_content(self, *args, **kwargs) -> str:
+        return self.template.render(title=pages_constants.TITLE)

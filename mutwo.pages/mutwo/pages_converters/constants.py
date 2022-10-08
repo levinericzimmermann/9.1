@@ -4,6 +4,7 @@ from mutwo import core_events
 BUILD_PATH = "./builds"
 TEMPLATES_PATH = "./templates"
 PAGE_TEMPLATE_PATH = f"{TEMPLATES_PATH}/page.tex.j2"
+SCORE_TEMPLATE_PATH = f"{TEMPLATES_PATH}/score.tex.j2"
 
 # Page creation
 MINIMA_DURATION_GENERATOR_ENVELOPE = core_events.Envelope([[0, 0.5], [4, 1], [12, 1], [18, 0.7]])

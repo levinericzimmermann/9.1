@@ -1,3 +1,5 @@
 #! /usr/bin/env nix-shell
-#! nix-shell -i bash --pure ../shell.nix
-lualatex --output-directory=builds/ --output-format=pdf score.tex
+#! nix-shell -i python3 --pure ../shell.nix
+
+from mutwo import pages_converters
+pages_converters.XToScore().convert()

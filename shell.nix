@@ -6,11 +6,15 @@ let
   mutwo-core-archive = builtins.fetchTarball "https://github.com/mutwo-org/mutwo.core/archive/97aea97f996973955889630c437ceaea405ea0a7.tar.gz";
   mutwo-core = import (mutwo-core-archive + "/default.nix");
 
+  mutwo-zimmermann-archive = builtins.fetchTarball "https://github.com/mutwo-org/mutwo.zimmermann/archive/d269d9009b2d7fea4f6029bd8771bc4534b52a8b.tar.gz";
+  mutwo-zimmermann = import (mutwo-zimmermann-archive + "/default.nix");
+
   mutwo-pages = pkgs.python39Packages.buildPythonPackage rec {
     name = "mutwo.pages";
     src = ./mutwo.pages;
     propagatedBuildInputs = with pkgs; [
         mutwo-core
+        mutwo-zimmermann
         python39Packages.jinja2
     ];
   };
