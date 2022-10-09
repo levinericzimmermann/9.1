@@ -1,7 +1,7 @@
 {# Here is some layout logic. #}
 {# Because it is only about layout it is inside the template. #}
 {% set player_count = player_data_list | length %}
-{% set page_height = 22 %}
+{% set page_height = 23 - (1 * player_count) %}
 {% set column_distance = page_height / player_count %}
 {% set header_size = "\\footnotesize" %}
 

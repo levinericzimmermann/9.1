@@ -1,4 +1,5 @@
 import abc
+import concurrent.futures
 import dataclasses
 import os
 import subprocess
@@ -56,7 +57,13 @@ class Jinja2Converter(core_converters.abc.Converter):
         with open(tex_path, "w") as tex_file:
             tex_file.write(tex_file_content)
         subprocess.call(
-            ["lualatex", "--output-directory=builds/", "--output-format=pdf", tex_path]
+            [
+                "lualatex",
+                "--output-directory=builds/",
+                "--output-format=pdf",
+                "-interaction=batchmode",
+                tex_path,
+            ]
         )
         if cleanup:
             os.remove(tex_path)
@@ -84,6 +91,18 @@ class PageToPDF(Jinja2Converter):
         return tex_file_content
 
 
+class VoiceCountToPageCover(Jinja2Converter):
+    def __init__(self):
+        super().__init__(constants.PAGE_COVER_TEMPLATE_PATH)
+
+    def _get_default_path(self, voice_count: int, **kwargs) -> str:
+        return f"{constants.BUILD_PATH}/pages_cover_for_{voice_count}_voices"
+
+    def _get_tex_file_content(self, voice_count: int, **kwargs) -> str:
+        tex_file_content = self.template.render(voice_count=voice_count, title=pages_constants.TITLE)
+        return tex_file_content
+
+
 class PageSequentialEventToPDF(core_converters.abc.Converter):
     def __init__(self):
         self.page_to_pdf = PageToPDF()
@@ -97,17 +116,98 @@ class PageSequentialEventToPDF(core_converters.abc.Converter):
         cleanup: bool = True,
     ) -> str:
         voice_count = len(page_sequential_event_to_convert[0])
+        cover_path = VoiceCountToPageCover().convert(voice_count, cleanup=cleanup)
         if path is None:
-            path = f"{constants.BUILD_PATH}/score_{voice_count}_players.pdf"
-        path_list = [
-            self.page_to_pdf.convert(page, cleanup=cleanup)
-            for page in page_sequential_event_to_convert
-        ]
+            path = f"{constants.BUILD_PATH}/pages_for_{voice_count}_players.pdf"
+        with concurrent.futures.ThreadPoolExecutor() as executor:
+            future_list = []
+            for page in page_sequential_event_to_convert:
+                future = executor.submit(
+                    self.page_to_pdf.convert, page, cleanup=cleanup
+                )
+                future_list.append(future)
+
+            path_list = [future.result() for future in future_list]
+
+        path_list.insert(0, cover_path)
         subprocess.call(["pdftk"] + path_list + ["output", path])
         if cleanup:
             for path in path_list:
                 os.remove(path)
         return path
+
+
+class XToMaximaEventCountEnvelope(core_converters.abc.Converter):
+    def __init__(
+        self,
+        random_seed: int,
+        curve_shape: float = 2,
+        minima_event_count: int = 0,
+        maxima_event_count: int = 5,
+        segment_page_count_range: ranges.Range = ranges.Range(4, 7),
+        minima_percentage_generator: pages_generators.EnvelopeDistributionRandom = pages_generators.EnvelopeDistributionRandom(
+            0,
+            core_events.Envelope([[0, 1], [0.2, 1], [0.5, 0.5], [1, 0.2]]),
+        ),
+        maxima_percentage_generator: pages_generators.EnvelopeDistributionRandom = pages_generators.EnvelopeDistributionRandom(
+            0,
+            core_events.Envelope([[0, 0.4], [0.3, 0.95], [0.4, 0.7], [1, 0.35]]),
+        ),
+    ):
+        self.curve_shape = curve_shape
+        self.minima_event_count = minima_event_count
+        self.maxima_event_count = maxima_event_count
+        self.random = np.random.default_rng(seed=random_seed)
+        self.minima_percentage_generator = minima_percentage_generator
+        self.maxima_percentage_generator = maxima_percentage_generator
+        self.segment_page_count_range = segment_page_count_range
+
+    def convert(self, voice_count: int, page_count: int) -> core_events.Envelope:
+        summed_minima_event_count = self.minima_event_count * voice_count
+        summed_maxima_event_count = self.maxima_event_count * voice_count
+
+        center = np.average([summed_minima_event_count, summed_maxima_event_count])
+
+        minima_envelope = core_events.Envelope(
+            [[0, summed_minima_event_count], [1, center]]
+        )
+        maxima_envelope = core_events.Envelope(
+            [[0, center], [1, summed_maxima_event_count]]
+        )
+
+        maxima_event_count_envelope_point_list = [
+            [0, int(minima_envelope.value_at(0.2))]
+        ]
+
+        last_position = 0  # True for maxima, False for minima
+        page_index = 0
+        while page_index < page_count:
+            if last_position:
+                value = minima_envelope.value_at(self.minima_percentage_generator())
+                # change slow at the beginning (long minima)
+                curve_shape = self.curve_shape
+            else:
+                value = maxima_envelope.value_at(self.maxima_percentage_generator())
+                # change fast at the beginning (short maxima)
+                curve_shape = -self.curve_shape
+            core_events.Envelope
+            last_position = not last_position
+            value = int(round(value))
+            added_page_count = self.random.integers(
+                self.segment_page_count_range.start,
+                self.segment_page_count_range.end,
+                dtype=int,
+            )
+            page_index += added_page_count
+            if page_index > page_count:
+                page_index = page_count
+            maxima_event_count_envelope_point_list.append(
+                [page_index, value, curve_shape]
+            )
+
+        return core_events.Envelope(maxima_event_count_envelope_point_list).set(
+            "duration", 1
+        )
 
 
 class XToPageSequentialEvent(core_converters.abc.Converter):
@@ -127,18 +227,41 @@ class XToPageSequentialEvent(core_converters.abc.Converter):
         self.minima_event_count = minima_event_count
         self.maxima_event_count = maxima_event_count
         self.maxima_event_count_envelope = maxima_event_count_envelope
+        minima_event_count_envelope_point_list = []
+        for absolute_time, value, curve_shape in zip(
+            self.maxima_event_count_envelope.absolute_time_tuple,
+            self.maxima_event_count_envelope.value_tuple,
+            self.maxima_event_count_envelope.curve_shape_tuple,
+        ):
+            local_minima_event_count = int(value * 0.35)
+            if local_minima_event_count < 0:
+                local_minima_event_count = 0
+            if local_minima_event_count == value:
+                local_minima_event_count -= 1
+            minima_event_count_envelope_point_list.append(
+                (absolute_time, local_minima_event_count, curve_shape)
+            )
+        self.minima_event_count_envelope = core_events.Envelope(
+            minima_event_count_envelope_point_list
+        )
         self.random = np.random.default_rng(seed=random_seed)
 
     def _get_event_count_tuple(
         self, voice_count: int, page_index: int, page_count: int
     ) -> tuple[int, ...]:
         position = page_index / page_count
+        minima_event_count = self.minima_event_count_envelope.value_at(position)
         maxima_event_count = self.maxima_event_count_envelope.value_at(position)
+        assert minima_event_count != maxima_event_count
         event_count_list = None
-        while event_count_list is None or sum(event_count_list) > maxima_event_count:
+        while (
+            event_count_list is None
+            or (event_count := sum(event_count_list)) > maxima_event_count
+            or event_count < minima_event_count
+        ):
             event_count_list = [
                 self.random.integers(
-                    self.minima_event_count, self.maxima_event_count, dtype=int
+                    self.minima_event_count, self.maxima_event_count + 1, dtype=int
                 )
                 for _ in range(voice_count)
             ]

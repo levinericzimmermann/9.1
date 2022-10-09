@@ -1,22 +1,57 @@
 #! /usr/bin/env nix-shell
 #! nix-shell -i python3 --pure ../shell.nix
 
+import ranges
+
+from mutwo import core_events
 from mutwo import pages_converters
 from mutwo import pages_generators
 
+MINIMA_EVENT_COUNT, MAXIMA_EVENT_COUNT = 0, 4
 
-PAGE_COUNT = 10
-# VOICE_COUNT_LIST = [3, 4, 5]
-VOICE_COUNT_LIST = [3]
-# RANDOM_SEED_LIST = [100, 300, 500]
-RANDOM_SEED_LIST = [100]
+
+SEGMENT_PAGE_COUNT_RANGE: ranges.Range = ranges.Range(5, 8)
+
+PAGE_COUNT = 100
+VOICE_COUNT_LIST = [3, 4, 5]
+RANDOM_SEED_LIST = [100, 300, 500]
+
+MINIMA_PERCENTAGE_ENVELOPE_LIST = [
+    core_events.Envelope([[0, 1], [0.2, 0.185], [0.4, 0.1], [0.55, 0], [1, 0]]),
+    core_events.Envelope([[0, 1], [0.2, 0.5], [0.5, 0.3], [0.7, 0], [1, 0]]),
+    core_events.Envelope([[0, 1], [0.2, 0.5], [0.5, 0.3], [1, 0]]),
+]
+
+
+MAXIMA_PERCENTAGE_ENVELOPE_LIST = [
+    core_events.Envelope([[0, 0.3], [0.3, 0.9], [0.4, 0.7], [0.6, 0.4], [1, 0]]),
+    core_events.Envelope([[0, 0.4], [0.3, 0.95], [0.4, 0.4], [0.6, 0.2], [1, 0]]),
+    core_events.Envelope([[0, 0.8], [0.3, 0.3], [0.4, 0], [1, 0]]),
+]
+
+CURVE_SHAPE_LIST = [1.4, 1.2, 1.2]
 
 assert len(RANDOM_SEED_LIST) == len(VOICE_COUNT_LIST)
+assert len(RANDOM_SEED_LIST) == len(MINIMA_PERCENTAGE_ENVELOPE_LIST)
+assert len(RANDOM_SEED_LIST) == len(MAXIMA_PERCENTAGE_ENVELOPE_LIST)
 
 
-for voice_count, random_seed in zip(VOICE_COUNT_LIST, RANDOM_SEED_LIST):
+for (
+    curve_shape,
+    voice_count,
+    random_seed,
+    minima_percentage_envelope,
+    maxima_percentage_envelope,
+) in zip(
+    CURVE_SHAPE_LIST,
+    VOICE_COUNT_LIST,
+    RANDOM_SEED_LIST,
+    MINIMA_PERCENTAGE_ENVELOPE_LIST,
+    MAXIMA_PERCENTAGE_ENVELOPE_LIST,
+):
     minima_duration_generator_seed = random_seed * 2
     maxima_duration_generator_seed = random_seed * 10
+    maxima_event_count_envelope_random_seed = random_seed + 87
 
     minima_duration_generator = pages_generators.EnvelopeDistributionRandom(
         pages_converters.constants.MINIMA_DURATION_GENERATOR_OFFSET,
@@ -29,7 +64,40 @@ for voice_count, random_seed in zip(VOICE_COUNT_LIST, RANDOM_SEED_LIST):
         random_seed=maxima_duration_generator_seed,
     )
 
+    minima_percentage_generator = pages_generators.EnvelopeDistributionRandom(
+        0, minima_percentage_envelope, random_seed=random_seed + 32
+    )
+
+    maxima_percentage_generator = pages_generators.EnvelopeDistributionRandom(
+        0, maxima_percentage_envelope, random_seed=random_seed + 17
+    )
+
+    maxima_event_count_envelope = pages_converters.XToMaximaEventCountEnvelope(
+        random_seed=maxima_event_count_envelope_random_seed,
+        minima_event_count=MINIMA_EVENT_COUNT,
+        maxima_event_count=MAXIMA_EVENT_COUNT,
+        segment_page_count_range=SEGMENT_PAGE_COUNT_RANGE,
+        minima_percentage_generator=minima_percentage_generator,
+        maxima_percentage_generator=maxima_percentage_generator,
+        curve_shape=curve_shape,
+    ).convert(voice_count, PAGE_COUNT)
+
     page_sequential_event = pages_converters.XToPageSequentialEvent(
-        minima_duration_generator, maxima_duration_generator, random_seed=random_seed
-    ).convert(page_count=10, voice_count=voice_count)
+        minima_duration_generator,
+        maxima_duration_generator,
+        random_seed=random_seed,
+        minima_event_count=MINIMA_EVENT_COUNT,
+        maxima_event_count=MAXIMA_EVENT_COUNT,
+        maxima_event_count_envelope=maxima_event_count_envelope,
+    ).convert(page_count=PAGE_COUNT, voice_count=voice_count)
+
+    # Start Logging ###################################################
+    event_count_list = []
+    for page in page_sequential_event:
+        event_count_list.append(sum([es.event_count for es in page]))
+
+    print(event_count_list)
+    print("")
+    # End Logging #####################################################
+
     pages_converters.PageSequentialEventToPDF().convert(page_sequential_event)
