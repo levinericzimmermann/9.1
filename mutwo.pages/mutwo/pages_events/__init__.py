@@ -44,7 +44,13 @@ class EventSequence(PlayerEvent):
         self.player_index = player_index
         self.event_count = event_count
         self.event_duration_range = event_duration_range
-        super().__init__(*args, duration=event_duration_range.end, **kwargs)
+        super().__init__(
+            *args,
+            duration=event_duration_range.end
+            if event_duration_range.end != float("inf")
+            else 10000000000,
+            **kwargs,
+        )
 
     @property
     def header(self) -> Header:
@@ -52,10 +58,32 @@ class EventSequence(PlayerEvent):
 
     @property
     def content(self) -> Content:
+        def parse_time(time: float) -> str:
+            if time == float("inf"):
+                parsed_time = r"$\infty$"
+            else:
+                parsed_time = f"{time}{{\\footnotesize s}}"
+
+            # return f"{parsed_time}{{\\footnotesize s}}"
+            return f"{parsed_time}"
+
+        def get_time_range():
+            start_time, stop_time = (
+                self.event_duration_range.start,
+                self.event_duration_range.end,
+            )
+
+            start, stop = (parse_time(time) for time in (start_time, stop_time))
+
+            # if start_time == 0 and stop_time == float("inf"):
+            #     return f"\dots until {stop}"
+
+            return f"{start} -- {stop}"
+
         return Content(
             self.player_index,
             str(self.event_count),
-            f"{self.event_duration_range.start}s -- {self.event_duration_range.end}s",
+            get_time_range(),
         )
 
 

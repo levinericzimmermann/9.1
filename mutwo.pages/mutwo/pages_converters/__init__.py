@@ -23,11 +23,38 @@ Content = tuple[str, str, str]
 
 
 class PageToPlayerDataList(core_converters.abc.Converter):
+    def fix_time_range_inconsistencies(
+        self, page_to_fix: pages_events.Page
+    ) -> pages_events.Page:
+        minima_duration_tuple = tuple(
+            event_sequence.event_duration_range.start for event_sequence in page_to_fix
+        )
+        maxima_minimal_duration = max(minima_duration_tuple)
+
+        if all((event_sequence.event_count == 0 for event_sequence in page_to_fix)):
+
+            def shall_set_start_duration_to_zero(start_duration: float) -> bool:
+                return start_duration < maxima_minimal_duration
+
+        else:
+
+            def shall_set_start_duration_to_zero(start_duration: float) -> bool:
+                return start_duration <= maxima_minimal_duration
+
+        fixed_page = page_to_fix.copy()
+        for event_sequence in fixed_page:
+            if event_sequence.event_count == 0 and shall_set_start_duration_to_zero(
+                event_sequence.event_duration_range.start
+            ):
+                event_sequence.event_duration_range.start = 0
+        return fixed_page
+
     def convert(
         self, page_to_convert: pages_events.Page
     ) -> list[tuple[Header, Content]]:
         player_data_list = []
-        for page_event in page_to_convert:
+        fixed_page = self.fix_time_range_inconsistencies(page_to_convert)
+        for page_event in fixed_page:
             player_data_list.append((page_event.header, page_event.content))
         return player_data_list
 
@@ -99,7 +126,9 @@ class VoiceCountToPageCover(Jinja2Converter):
         return f"{constants.BUILD_PATH}/pages_cover_for_{voice_count}_voices"
 
     def _get_tex_file_content(self, voice_count: int, **kwargs) -> str:
-        tex_file_content = self.template.render(voice_count=voice_count, title=pages_constants.TITLE)
+        tex_file_content = self.template.render(
+            voice_count=voice_count, title=pages_constants.TITLE
+        )
         return tex_file_content
 
 
@@ -271,7 +300,7 @@ class XToPageSequentialEvent(core_converters.abc.Converter):
         # In case there is no event, this 'no-event-rest' should
         # still have a certain duration. Therefore we "betray" the algorithm
         # by "faking" to have a higher event_count than reality.
-        if event_count == 0:
+        if has_zero_events := (event_count == 0):
             event_count = self.random.integers(1, 3)
 
         minima_list, maxima_list = [], []
@@ -289,9 +318,16 @@ class XToPageSequentialEvent(core_converters.abc.Converter):
             for list_ in (minima_list, maxima_list)
         )
 
+
+        if not has_zero_events and minima == 0:
+            minima = 5
+
         # For unlikely case if maxima is higher than minima
-        if maxima <= minima:
+        while maxima <= minima:
             maxima = minima + 5
+
+        if has_zero_events:
+            maxima = float("inf")
 
         return ranges.Range(minima, maxima)
 
