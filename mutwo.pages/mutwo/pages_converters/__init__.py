@@ -239,6 +239,31 @@ class XToMaximaEventCountEnvelope(core_converters.abc.Converter):
         )
 
 
+class BadParameterError(Exception):
+    def __init__(
+            self, event_count_list: list[int], too_few_events: bool, too_many_events: bool, minima_event_count: int, maxima_event_count: int
+    ):
+        super().__init__(
+            f"A mix of bad parameters has been passed.\n"
+            "We got the following event_count_list: "
+            f"{event_count_list}.\n"
+            "Are there too many events? "
+            f"{too_many_events}.\n"
+            "Are there too few events? "
+            f"{too_few_events}.\n"
+            f"minima_event_count = {minima_event_count}; "
+            f"maxima_event_count = {maxima_event_count}"
+        )
+
+
+class TooFewEvents(BadParameterError):
+    ...
+
+
+class TooManyEvents(BadParameterError):
+    ...
+
+
 class XToPageSequentialEvent(core_converters.abc.Converter):
     def __init__(
         self,
@@ -275,18 +300,84 @@ class XToPageSequentialEvent(core_converters.abc.Converter):
         )
         self.random = np.random.default_rng(seed=random_seed)
 
+    def _fix_bad_event_count_list(
+        self,
+        minima_event_count: int,
+        maxima_event_count: int,
+        too_few_events: bool,
+        too_many_events: bool,
+        event_count_list: list[int],
+    ) -> list[int]:
+        def fix(event_count_list: list[int], add: int = 1):
+            def get_compare():
+                if add > 0:
+                    return (
+                        lambda event_count_list: sum(event_count_list)
+                        >= minima_event_count
+                    )
+                else:
+                    return (
+                        lambda event_count_list: sum(event_count_list)
+                        <= maxima_event_count
+                    )
+
+            event_count_list = list(event_count_list)
+            player_count = len(event_count_list)
+            compare = get_compare()
+            while not compare(event_count_list):
+                player = self.random.integers(0, player_count)
+                new_event_count = event_count_list[player] + add
+                if new_event_count >= 0:
+                    event_count_list[player] = new_event_count
+                print(sum(event_count_list), minima_event_count, maxima_event_count)
+            print("SOLVED")
+            return event_count_list
+
+        if too_few_events and too_many_events:
+            exception = BadParameterError
+        elif too_few_events:
+            exception = TooFewEvents
+        elif too_many_events:
+            exception = TooManyEvents
+        else:
+            raise NotImplementedError()
+
+        try:
+            raise exception(event_count_list, too_few_events, too_many_events, minima_event_count, maxima_event_count)
+        except TooFewEvents as error:
+            print(error)
+            return fix(event_count_list, 1)
+        except TooManyEvents as error:
+            print(error)
+            return fix(event_count_list, -1)
+        except BadParameterError as error:
+            raise error
+        else:
+            raise NotImplementedError()
+
     def _get_event_count_tuple(
         self, voice_count: int, page_index: int, page_count: int
     ) -> tuple[int, ...]:
         position = page_index / page_count
         minima_event_count = self.minima_event_count_envelope.value_at(position)
         maxima_event_count = self.maxima_event_count_envelope.value_at(position)
-        assert minima_event_count != maxima_event_count
+
+        if minima_event_count < 0:
+            minima_event_count = 0
+        while maxima_event_count <= minima_event_count:
+            maxima_event_count += 1
+
+        assert minima_event_count < maxima_event_count
         event_count_list = None
+        counter = 0
         while (
             event_count_list is None
-            or (event_count := sum(event_count_list)) > maxima_event_count
-            or event_count < minima_event_count
+            or (
+                too_many_events := (
+                    (event_count := sum(event_count_list)) > maxima_event_count
+                )
+            )
+            or (too_few_events := (event_count < minima_event_count))
         ):
             event_count_list = [
                 self.random.integers(
@@ -294,6 +385,27 @@ class XToPageSequentialEvent(core_converters.abc.Converter):
                 )
                 for _ in range(voice_count)
             ]
+            counter += 1
+            if counter > 1000:
+
+                try:
+                    too_many_events
+                except UnboundLocalError:
+                    too_many_events = False
+
+                try:
+                    too_few_events
+                except UnboundLocalError:
+                    too_few_events = False
+
+                event_count_list = self._fix_bad_event_count_list(
+                    minima_event_count,
+                    maxima_event_count,
+                    too_few_events,
+                    too_many_events,
+                    event_count_list,
+                )
+                break
         return tuple(event_count_list)
 
     def _get_duration_range(self, event_count: int) -> ranges.Range:
@@ -317,7 +429,6 @@ class XToPageSequentialEvent(core_converters.abc.Converter):
             5 * round(np.average(list_) / 5)
             for list_ in (minima_list, maxima_list)
         )
-
 
         if not has_zero_events and minima == 0:
             minima = 5
