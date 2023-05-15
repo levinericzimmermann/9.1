@@ -1,9 +1,11 @@
 #! /usr/bin/env nix-shell
 #! nix-shell -i python3 --pure ../shell.nix
 
+import numpy as np
 import ranges
 
 from mutwo import core_events
+from mutwo import core_generators
 from mutwo import pages_converters
 from mutwo import pages_generators
 
@@ -36,6 +38,35 @@ assert len(RANDOM_SEED_LIST) == len(MINIMA_PERCENTAGE_ENVELOPE_LIST)
 assert len(RANDOM_SEED_LIST) == len(MAXIMA_PERCENTAGE_ENVELOPE_LIST)
 
 
+def get_is_short_generator():
+    r = np.random.default_rng(134)
+    c = core_generators.DynamicChoice(
+        [False, True],
+        [
+            core_events.Envelope([(0, 0.5), (1, 0.5)]),
+            core_events.Envelope([(0, 0.15), (1, 0.15)]),
+        ],
+        random_seed=44,
+    )
+    # If we have short events, it's better to repeat them for
+    # some pages.
+    repetition_count = [ranges.Range(1, 2), ranges.Range(3, 4)]
+    is_short_list = []
+    while len(is_short_list) < PAGE_COUNT:
+        position = len(is_short_list) / PAGE_COUNT
+        is_short = c.gamble_at(position)
+        repetition_count_range = repetition_count[is_short]
+        for _ in range(
+            r.choice(
+                list(
+                    range(repetition_count_range.start, repetition_count_range.end + 1)
+                )
+            )
+        ):
+            is_short_list.append(is_short)
+    return iter(is_short_list)
+
+
 for (
     curve_shape,
     voice_count,
@@ -53,14 +84,25 @@ for (
     maxima_duration_generator_seed = random_seed * 10
     maxima_event_count_envelope_random_seed = random_seed + 87
 
-    minima_duration_generator = pages_generators.EnvelopeDistributionRandom(
+    minima_duration_generator_short = pages_generators.EnvelopeDistributionRandom(
         pages_converters.constants.MINIMA_DURATION_GENERATOR_OFFSET,
         pages_converters.constants.MINIMA_DURATION_GENERATOR_ENVELOPE,
         random_seed=minima_duration_generator_seed,
     )
-    maxima_duration_generator = pages_generators.EnvelopeDistributionRandom(
+    maxima_duration_generator_short = pages_generators.EnvelopeDistributionRandom(
         pages_converters.constants.MAXIMA_DURATION_GENERATOR_OFFSET,
         pages_converters.constants.MAXIMA_DURATION_GENERATOR_ENVELOPE,
+        random_seed=maxima_duration_generator_seed,
+    )
+
+    minima_duration_generator_long = pages_generators.EnvelopeDistributionRandom(
+        pages_converters.constants.MINIMA_DURATION_GENERATOR_OFFSET_LONG,
+        pages_converters.constants.MINIMA_DURATION_GENERATOR_ENVELOPE_LONG,
+        random_seed=minima_duration_generator_seed,
+    )
+    maxima_duration_generator_long = pages_generators.EnvelopeDistributionRandom(
+        pages_converters.constants.MAXIMA_DURATION_GENERATOR_OFFSET_LONG,
+        pages_converters.constants.MAXIMA_DURATION_GENERATOR_ENVELOPE_LONG,
         random_seed=maxima_duration_generator_seed,
     )
 
@@ -83,8 +125,11 @@ for (
     ).convert(voice_count, PAGE_COUNT)
 
     page_sequential_event = pages_converters.XToPageSequentialEvent(
-        minima_duration_generator,
-        maxima_duration_generator,
+        minima_duration_generator_short,
+        maxima_duration_generator_short,
+        minima_duration_generator_long,
+        maxima_duration_generator_long,
+        get_is_short_generator=get_is_short_generator,
         random_seed=random_seed,
         minima_event_count=MINIMA_EVENT_COUNT,
         maxima_event_count=MAXIMA_EVENT_COUNT,

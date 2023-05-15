@@ -39,11 +39,13 @@ class EventSequence(PlayerEvent):
         player_index: int,
         event_count: int,
         event_duration_range: ranges.Range,
+        is_short: bool,
         **kwargs,
     ):
         self.player_index = player_index
         self.event_count = event_count
         self.event_duration_range = event_duration_range
+        self.is_short = is_short
         super().__init__(
             *args,
             duration=event_duration_range.end
@@ -57,12 +59,19 @@ class EventSequence(PlayerEvent):
         return Header("number of events", "event sequence duration range")
 
     @property
+    def meter(self) -> str:
+        if self.is_short:
+            return "s"
+        else:
+            return "m"
+
+    @property
     def content(self) -> Content:
         def parse_time(time: float) -> str:
             if time == float("inf"):
                 parsed_time = r"$\infty$"
             else:
-                parsed_time = f"{time}{{\\footnotesize s}}"
+                parsed_time = f"{time}{{\\footnotesize {self.meter}}}"
 
             # return f"{parsed_time}{{\\footnotesize s}}"
             return f"{parsed_time}"

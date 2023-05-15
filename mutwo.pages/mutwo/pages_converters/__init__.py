@@ -1,6 +1,7 @@
 import abc
 import concurrent.futures
 import dataclasses
+import itertools
 import os
 import subprocess
 import typing
@@ -241,7 +242,12 @@ class XToMaximaEventCountEnvelope(core_converters.abc.Converter):
 
 class BadParameterError(Exception):
     def __init__(
-            self, event_count_list: list[int], too_few_events: bool, too_many_events: bool, minima_event_count: int, maxima_event_count: int
+        self,
+        event_count_list: list[int],
+        too_few_events: bool,
+        too_many_events: bool,
+        minima_event_count: int,
+        maxima_event_count: int,
     ):
         super().__init__(
             f"A mix of bad parameters has been passed.\n"
@@ -267,17 +273,29 @@ class TooManyEvents(BadParameterError):
 class XToPageSequentialEvent(core_converters.abc.Converter):
     def __init__(
         self,
-        minima_duration_generator: pages_generators.EnvelopeDistributionRandom,
-        maxima_duration_generator: pages_generators.EnvelopeDistributionRandom,
+        minima_duration_generator_short: pages_generators.EnvelopeDistributionRandom,
+        maxima_duration_generator_short: pages_generators.EnvelopeDistributionRandom,
+        minima_duration_generator_long: pages_generators.EnvelopeDistributionRandom,
+        maxima_duration_generator_long: pages_generators.EnvelopeDistributionRandom,
         minima_event_count: int = 0,
         maxima_event_count: int = 5,
         maxima_event_count_envelope: core_events.Envelope = core_events.Envelope(
             [[0, 5], [0.2, 2], [0.4, 8], [0.6, 0], [0.8, 9], [1, 3]]
         ),
         random_seed: int = 1000,
+        get_is_short_generator: typing.Callable[
+            [], typing.Generator
+        ] = lambda: itertools.cycle(
+            (1,),
+        ),
     ):
-        self.minima_duration_generator = minima_duration_generator
-        self.maxima_duration_generator = maxima_duration_generator
+        self.get_is_short_generator = get_is_short_generator
+
+        self.minima_duration_generator_short = minima_duration_generator_short
+        self.maxima_duration_generator_short = maxima_duration_generator_short
+        self.minima_duration_generator_long = minima_duration_generator_long
+        self.maxima_duration_generator_long = maxima_duration_generator_long
+
         self.minima_event_count = minima_event_count
         self.maxima_event_count = maxima_event_count
         self.maxima_event_count_envelope = maxima_event_count_envelope
@@ -343,7 +361,13 @@ class XToPageSequentialEvent(core_converters.abc.Converter):
             raise NotImplementedError()
 
         try:
-            raise exception(event_count_list, too_few_events, too_many_events, minima_event_count, maxima_event_count)
+            raise exception(
+                event_count_list,
+                too_few_events,
+                too_many_events,
+                minima_event_count,
+                maxima_event_count,
+            )
         except TooFewEvents as error:
             print(error)
             return fix(event_count_list, 1)
@@ -408,18 +432,25 @@ class XToPageSequentialEvent(core_converters.abc.Converter):
                 break
         return tuple(event_count_list)
 
-    def _get_duration_range(self, event_count: int) -> ranges.Range:
+    def _get_duration_range(self, event_count: int, is_short: bool) -> ranges.Range:
         # In case there is no event, this 'no-event-rest' should
         # still have a certain duration. Therefore we "betray" the algorithm
         # by "faking" to have a higher event_count than reality.
         if has_zero_events := (event_count == 0):
             event_count = self.random.integers(1, 3)
 
+        if is_short:
+            minima_duration_generator = self.minima_duration_generator_short
+            maxima_duration_generator = self.maxima_duration_generator_short
+        else:
+            minima_duration_generator = self.minima_duration_generator_long
+            maxima_duration_generator = self.maxima_duration_generator_long
+
         minima_list, maxima_list = [], []
         for _ in range(event_count):
             for list_, generator in (
-                (minima_list, self.minima_duration_generator),
-                (maxima_list, self.maxima_duration_generator),
+                (minima_list, minima_duration_generator),
+                (maxima_list, maxima_duration_generator),
             ):
                 list_.append(generator())
 
@@ -446,17 +477,20 @@ class XToPageSequentialEvent(core_converters.abc.Converter):
         self, page_count: int = 100, voice_count: int = 4
     ) -> core_events.SequentialEvent[pages_events.Page]:
         page_sequential_event = core_events.SequentialEvent([])
+        is_short_generator = self.get_is_short_generator()
         for page_number in range(page_count):
             page = pages_events.Page(page_number=page_number)
             event_count_tuple = self._get_event_count_tuple(
                 voice_count, page_number, page_count
             )
+            is_short = next(is_short_generator)
             for voice_index, event_count in enumerate(event_count_tuple):
-                duration_range = self._get_duration_range(event_count)
+                duration_range = self._get_duration_range(event_count, is_short)
                 event_sequence = pages_events.EventSequence(
                     player_index=voice_index,
                     event_count=event_count,
                     event_duration_range=duration_range,
+                    is_short=is_short,
                 )
                 page.append(event_sequence)
             page_sequential_event.append(page)
