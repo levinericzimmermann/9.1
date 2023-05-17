@@ -1,11 +1,28 @@
 {# Here is some layout logic. #}
 {# Because it is only about layout it is inside the template. #}
 {% set player_count = player_data_list | length %}
-{% set page_height = 23 - (1 * player_count) %}
+{% if paper == "a5paper" %}
+{%     set basic_page_height = 14.8 %}
+{%     set hdistance = 2 %}
+{%     set hminipage = ".99" %}
+{%     set htable = 0.8 %}
+{% elif paper == "a5paper" %}
+{%     set basic_page_height = 23 %}
+{%     set hdistance = 4.8 %}
+{%     set hminipage = ".95" %}
+{%     set htable = 0.6 %}
+{# Should be something like "NotImplementedError" :) #}
+{% else %}
+{%     set basic_page_height = 23 %}
+{%     set hdistance = 4.8 %}
+{%     set hminipage = ".95" %}
+{%     set htable = 0.6 %}
+{% endif %}
+{% set page_height = basic_page_height - (1 * player_count) %}
 {% set column_distance = page_height / player_count %}
 {% set header_size = "\\footnotesize" %}
 
-\documentclass[12pt,a4paper,ngerman]{article}
+\documentclass[12pt,{{ paper }},ngerman]{article}
 
 \renewcommand*\ttdefault{cmvtt}
 % \usepackage{courier}
@@ -39,9 +56,9 @@
 
 \vspace{1.5cm}
 
-\hspace{4.8cm} \begin{minipage}[b]{.95\textwidth}
+\hspace{ {{ hdistance }}cm} \begin{minipage}[b]{ {{ hminipage }}\textwidth}
 
-    \begin{tabularx}{0.6\textwidth}{l l X} 
+    \begin{tabularx}{ {{ htable }}\textwidth}{l l X}
 
         {% for player_data in player_data_list %}
 
