@@ -167,4 +167,7 @@ for (
 
     # End Logging #####################################################
 
-    pages_converters.PageSequentialEventToPDF().convert(page_sequential_event)
+    for paper in ("a4paper", "a5paper"):
+        pages_converters.PageSequentialEventToPDF(
+            pages_converters.PageToPDF(paper=paper)
+        ).convert(page_sequential_event)
