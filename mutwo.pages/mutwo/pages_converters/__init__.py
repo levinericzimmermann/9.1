@@ -123,7 +123,8 @@ class PageToPDF(Jinja2Converter):
 
 
 class VoiceCountToPageCover(Jinja2Converter):
-    def __init__(self):
+    def __init__(self, paper: str = "a4paper"):
+        self.paper = paper
         super().__init__(constants.PAGE_COVER_TEMPLATE_PATH)
 
     def _get_default_path(self, voice_count: int, **kwargs) -> str:
@@ -131,7 +132,7 @@ class VoiceCountToPageCover(Jinja2Converter):
 
     def _get_tex_file_content(self, voice_count: int, **kwargs) -> str:
         tex_file_content = self.template.render(
-            voice_count=voice_count, title=pages_constants.TITLE
+            voice_count=voice_count, title=pages_constants.TITLE, paper=self.paper
         )
         return tex_file_content
 
@@ -149,7 +150,7 @@ class PageSequentialEventToPDF(core_converters.abc.Converter):
         cleanup: bool = True,
     ) -> str:
         voice_count = len(page_sequential_event_to_convert[0])
-        cover_path = VoiceCountToPageCover().convert(voice_count, cleanup=cleanup)
+        cover_path = VoiceCountToPageCover(self.page_to_pdf.paper).convert(voice_count, cleanup=cleanup)
         if path is None:
             path = f"{constants.BUILD_PATH}/pages_for_{voice_count}_players_{self.page_to_pdf.paper}.pdf"
         with concurrent.futures.ThreadPoolExecutor() as executor:
