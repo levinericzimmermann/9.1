@@ -143,6 +143,28 @@ for (
 
     print(event_count_list)
     print("")
+
+    global_min_duration = 0
+    global_max_duration = 0
+    for page in page_sequential_event:
+        min_duration = max([e.event_duration_range.start for e in page])
+        max_duration = max(
+            [
+                e.event_duration_range.end
+                if e.event_duration_range.end != float("inf")
+                else e.event_duration_range.start
+                for e in page
+            ]
+        )
+        if not page[0].is_short:
+            min_duration *= 60
+            max_duration *= 60
+        global_min_duration += min_duration
+        global_max_duration += max_duration
+
+    print("Min duration:", global_min_duration / 60, "minutes")
+    print("Max duration:", global_max_duration / 60, "minutes")
+
     # End Logging #####################################################
 
     pages_converters.PageSequentialEventToPDF().convert(page_sequential_event)
